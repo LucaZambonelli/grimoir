@@ -1718,16 +1718,26 @@ methods to get master and slave
         j *= (self._tng - self._tgo)**3
         self._nodes[self._master[0]][0] = (x, v, a, j)
 
-    def set_endpoint(self, x=np.NaN, v=np.NaN, a=np.NaN, j=np.NaN):
+    def set_endpoint(self, x=np.NaN, v=np.NaN, a=np.NaN, j=np.NaN, cont=None):
         """sets slave with derivatives at the end of master axis"""
         if self._sl is not None:
             return
         if np.isnan(x) and np.isnan(v) and np.isnan(a) and np.isnan(j):
-            return
-        v *= self._tng - self._tgo
-        a *= (self._tng - self._tgo)**2
-        j *= (self._tng - self._tgo)**3
-        self._nodes[self._master[-1]][0] = (x, v, a, j)
+            if cont is None:
+                cont = self._continuity
+            else:
+                cont = max(self._continuity, cont)
+        elif cont is None:
+            cont = np.NaN
+        if np.isnan(cont):
+            v *= self._tng - self._tgo
+            a *= (self._tng - self._tgo)**2
+            j *= (self._tng - self._tgo)**3
+        else:
+            v = np.NaN
+            a = np.NaN
+            j = np.NaN
+        self._nodes[self._master[-1]] = [(x, v, a, j), cont]
 
     def set_point(self, t0, x=np.NaN, v=np.NaN, a=np.NaN, j=np.NaN, cont=None):
         """sets slave with derivatives at given point in master axis"""
@@ -1795,6 +1805,9 @@ methods to get master and slave
                     self._cond_no += 1
             if not np.isnan(self._nodes[t][1]):
                 self._cond_no += self._nodes[t][1] + 1
+        if not np.isnan(self._nodes[times[-1]][1]):
+            if not np.isnan(self._nodes[times[-1]][0][0]):
+                self._cond_no -= 1
         if self._eq_no != self._cond_no:
             return
         # build the matrix ad the vector
@@ -1803,87 +1816,274 @@ methods to get master and slave
             columnsafter = self._eq_no - columnsbefore - self._legs[l] - 1
             if l[0] == sorted(self._nodes)[0]:
                 if not np.isnan(self._nodes[l[0]][0][0]):
-                    self._cf.append(np.block([np.zeros(columnsbefore),
-                                    self._eq0(l[0], self._legs[l]),
-                                    np.zeros(columnsafter)]))
+                    self._cf.append(
+                        np.block(
+                            [
+                                np.zeros(columnsbefore),
+                                self._eq0(l[0], self._legs[l]),
+                                np.zeros(columnsafter)
+                            ]
+                        )
+                    )
                     self._tn.append(self._nodes[l[0]][0][0])
                 if not np.isnan(self._nodes[l[0]][0][1]):
-                    self._cf.append(np.block([np.zeros(columnsbefore),
-                                    self._eq1(l[0], self._legs[l]),
-                                    np.zeros(columnsafter)]))
+                    self._cf.append(
+                        np.block(
+                            [
+                                np.zeros(columnsbefore),
+                                self._eq1(l[0], self._legs[l]),
+                                np.zeros(columnsafter)
+                            ]
+                        )
+                    )
                     self._tn.append(self._nodes[l[0]][0][1])
                 if not np.isnan(self._nodes[l[0]][0][2]):
-                    self._cf.append(np.block([np.zeros(columnsbefore),
-                                    self._eq2(l[0], self._legs[l]),
-                                    np.zeros(columnsafter)]))
+                    self._cf.append(
+                        np.block(
+                            [
+                                np.zeros(columnsbefore),
+                                self._eq2(l[0], self._legs[l]),
+                                np.zeros(columnsafter)
+                            ]
+                        )
+                    )
                     self._tn.append(self._nodes[l[0]][0][2])
                 if not np.isnan(self._nodes[l[0]][0][3]):
-                    self._cf.append(np.block([np.zeros(columnsbefore),
-                                    self._eq3(l[0], self._legs[l]),
-                                    np.zeros(columnsafter)]))
+                    self._cf.append(
+                        np.block(
+                            [
+                                np.zeros(columnsbefore),
+                                self._eq3(l[0], self._legs[l]),
+                                np.zeros(columnsafter)
+                            ]
+                        )
+                    )
                     self._tn.append(self._nodes[l[0]][0][3])
             if not np.isnan(self._nodes[l[1]][0][0]):
-                self._cf.append(np.block([np.zeros(columnsbefore),
+                if (
+                    l[1] != sorted(self._nodes)[-1]
+                    or np.isnan(self._nodes[l[1]][1])
+                ):
+                    self._cf.append(
+                        np.block(
+                            [
+                                np.zeros(columnsbefore),
                                 self._eq0(l[1], self._legs[l]),
-                                np.zeros(columnsafter)]))
+                                np.zeros(columnsafter)
+                            ]
+                        )
+                    )
+                else:
+                    deg1 = self._legs[sorted(self._legs)[0]]
+                    deg2 = self._legs[sorted(self._legs)[-1]]
+                    self._cf.append(
+                        np.block(
+                            [
+                                -self._eq0(sorted(self._nodes)[0], deg1),
+                                np.zeros(self._eq_no - deg1 - deg2 - 2),
+                                self._eq0(sorted(self._nodes)[-1], deg2)
+                            ]
+                        )
+                    )
                 self._tn.append(self._nodes[l[1]][0][0])
             if not np.isnan(self._nodes[l[1]][0][1]):
-                self._cf.append(np.block([np.zeros(columnsbefore),
-                                self._eq1(l[1], self._legs[l]),
-                                np.zeros(columnsafter)]))
+                self._cf.append(
+                    np.block(
+                        [
+                            np.zeros(columnsbefore),
+                            self._eq1(l[1], self._legs[l]),
+                            np.zeros(columnsafter)
+                        ]
+                    )
+                )
                 self._tn.append(self._nodes[l[1]][0][1])
             if not np.isnan(self._nodes[l[1]][0][2]):
-                self._cf.append(np.block([np.zeros(columnsbefore),
-                                self._eq2(l[1], self._legs[l]),
-                                np.zeros(columnsafter)]))
+                self._cf.append(
+                    np.block(
+                        [
+                            np.zeros(columnsbefore),
+                            self._eq2(l[1], self._legs[l]),
+                            np.zeros(columnsafter)
+                        ]
+                    )
+                )
                 self._tn.append(self._nodes[l[1]][0][2])
             if not np.isnan(self._nodes[l[1]][0][3]):
-                self._cf.append(np.block([np.zeros(columnsbefore),
-                                self._eq3(l[1], self._legs[l]),
-                                np.zeros(columnsafter)]))
+                self._cf.append(
+                    np.block(
+                        [
+                            np.zeros(columnsbefore),
+                            self._eq3(l[1], self._legs[l]),
+                            np.zeros(columnsafter)
+                        ]
+                    )
+                )
                 self._tn.append(self._nodes[l[1]][0][3])
             if not np.isnan(self._nodes[l[1]][1]):
-                m = sorted(self._legs)[sorted(self._legs).index(l)+1]
-                self._cf.append(np.block([np.zeros(columnsbefore),
+                if l[1] == sorted(self._nodes)[-1]:
+                    deg1 = self._legs[sorted(self._legs)[0]]
+                    deg2 = self._legs[sorted(self._legs)[-1]]
+                    if np.isnan(self._nodes[l[1]][0][0]):
+                        self._cf.append(
+                            np.block(
+                                [
+                                    -self._eq0(sorted(self._nodes)[0], deg1),
+                                    np.zeros(self._eq_no - deg1 - deg2 - 2),
+                                    self._eq0(sorted(self._nodes)[-1], deg2)
+                                ]
+                            )
+                        )
+                        self._tn.append(0)
+                    if self._nodes[l[1]][1] > 0:
+                        self._cf.append(
+                            np.block(
+                                [
+                                    -self._eq1(sorted(self._nodes)[0], deg1),
+                                    np.zeros(self._eq_no - deg1 - deg2 - 2),
+                                    self._eq1(sorted(self._nodes)[-1], deg2)
+                                ]
+                            )
+                        )
+                        self._tn.append(0)
+                    if self._nodes[l[1]][1] > 1:
+                        self._cf.append(
+                            np.block(
+                                [
+                                    -self._eq2(sorted(self._nodes)[0], deg1),
+                                    np.zeros(self._eq_no - deg1 - deg2 - 2),
+                                    self._eq2(sorted(self._nodes)[-1], deg2)
+                                ]
+                            )
+                        )
+                        self._tn.append(0)
+                    if self._nodes[l[1]][1] > 2:
+                        self._cf.append(
+                            np.block(
+                                [
+                                    -self._eq3(sorted(self._nodes)[0], deg1),
+                                    np.zeros(self._eq_no - deg1 - deg2 - 2),
+                                    self._eq3(sorted(self._nodes)[-1], deg2)
+                                ]
+                            )
+                        )
+                        self._tn.append(0)
+                    if self._nodes[l[1]][1] > 3:
+                        self._cf.append(
+                            np.block(
+                                [
+                                    -self._eq4(sorted(self._nodes)[0], deg1),
+                                    np.zeros(self._eq_no - deg1 - deg2 - 2),
+                                    self._eq4(sorted(self._nodes)[-1], deg2)
+                                ]
+                            )
+                        )
+                        self._tn.append(0)
+                    if self._nodes[l[1]][1] > 4:
+                        self._cf.append(
+                            np.block(
+                                [
+                                    -self._eq5(sorted(self._nodes)[0], deg1),
+                                    np.zeros(self._eq_no - deg1 - deg2 - 2),
+                                    self._eq5(sorted(self._nodes)[-1], deg2)
+                                ]
+                            )
+                        )
+                        self._tn.append(0)
+                    if self._nodes[l[1]][1] > 5:
+                        self._cf.append(
+                            np.block(
+                                [
+                                    -self._eq6(sorted(self._nodes)[0], deg1),
+                                    np.zeros(self._eq_no - deg1 - deg2 - 2),
+                                    self._eq6(sorted(self._nodes)[-1], deg2)
+                                ]
+                            )
+                        )
+                        self._tn.append(0)
+                else:
+                    m = sorted(self._legs)[sorted(self._legs).index(l)+1]
+                    self._cf.append(
+                        np.block(
+                            [
+                                np.zeros(columnsbefore),
                                 self._eq0(l[1], self._legs[l]),
                                 -self._eq0(m[0], self._legs[m]),
-                                np.zeros(columnsafter - self._legs[m] - 1)]))
-                self._tn.append(0)
-                self._cf.append(np.block([np.zeros(columnsbefore),
+                                np.zeros(columnsafter - self._legs[m] - 1)
+                            ]
+                        )
+                    )
+                    self._tn.append(0)
+                    self._cf.append(
+                        np.block(
+                            [
+                                np.zeros(columnsbefore),
                                 self._eq1(l[1], self._legs[l]),
                                 -self._eq1(m[0], self._legs[m]),
-                                np.zeros(columnsafter - self._legs[m] - 1)]))
-                self._tn.append(0)
-                if self._nodes[l[1]][1] > 1:
-                    self._cf.append(np.block([np.zeros(columnsbefore),
+                                np.zeros(columnsafter - self._legs[m] - 1)
+                            ]
+                        )
+                    )
+                    self._tn.append(0)
+                    if self._nodes[l[1]][1] > 1:
+                        self._cf.append(
+                            np.block(
+                                [
+                                    np.zeros(columnsbefore),
                                     self._eq2(l[1], self._legs[l]),
                                     -self._eq2(m[0], self._legs[m]),
-                                    np.zeros(columnsafter-self._legs[m]-1)]))
-                    self._tn.append(0)
-                if self._nodes[l[1]][1] > 2:
-                    self._cf.append(np.block([np.zeros(columnsbefore),
+                                    np.zeros(columnsafter-self._legs[m]-1)
+                                ]
+                            )
+                        )
+                        self._tn.append(0)
+                    if self._nodes[l[1]][1] > 2:
+                        self._cf.append(
+                            np.block(
+                                [
+                                    np.zeros(columnsbefore),
                                     self._eq3(l[1], self._legs[l]),
                                     -self._eq3(m[0], self._legs[m]),
-                                    np.zeros(columnsafter-self._legs[m]-1)]))
-                    self._tn.append(0)
-                if self._nodes[l[1]][1] > 3:
-                    self._cf.append(np.block([np.zeros(columnsbefore),
+                                    np.zeros(columnsafter-self._legs[m]-1)
+                                ]
+                            )
+                        )
+                        self._tn.append(0)
+                    if self._nodes[l[1]][1] > 3:
+                        self._cf.append(
+                            np.block(
+                                [
+                                    np.zeros(columnsbefore),
                                     self._eq4(l[1], self._legs[l]),
                                     -self._eq4(m[0], self._legs[m]),
-                                    np.zeros(columnsafter-self._legs[m]-1)]))
-                    self._tn.append(0)
-                if self._nodes[l[1]][1] > 4:
-                    self._cf.append(np.block([np.zeros(columnsbefore),
+                                    np.zeros(columnsafter-self._legs[m]-1)
+                                ]
+                            )
+                        )
+                        self._tn.append(0)
+                    if self._nodes[l[1]][1] > 4:
+                        self._cf.append(
+                            np.block(
+                                [
+                                    np.zeros(columnsbefore),
                                     self._eq5(l[1], self._legs[l]),
                                     -self._eq5(m[0], self._legs[m]),
-                                    np.zeros(columnsafter-self._legs[m]-1)]))
-                    self._tn.append(0)
-                if self._nodes[l[1]][1] > 5:
-                    self._cf.append(np.block([np.zeros(columnsbefore),
+                                    np.zeros(columnsafter-self._legs[m]-1)
+                                ]
+                            )
+                        )
+                        self._tn.append(0)
+                    if self._nodes[l[1]][1] > 5:
+                        self._cf.append(
+                            np.block(
+                                [
+                                    np.zeros(columnsbefore),
                                     self._eq6(l[1], self._legs[l]),
                                     -self._eq6(m[0], self._legs[m]),
-                                    np.zeros(columnsafter-self._legs[m]-1)]))
-                    self._tn.append(0)
+                                    np.zeros(columnsafter-self._legs[m]-1)
+                                ]
+                            )
+                        )
+                        self._tn.append(0)
             columnsbefore += self._legs[l] + 1
         self._cf = np.array(self._cf)
         self._tn = np.array(self._tn)
@@ -1918,7 +2118,7 @@ methods to get master and slave
             '      j      |')
       times = sorted(self._nodes)
       for t in times:
-          print(f'| {t:8.3f} |',
+          print(f'| {_time(t,self._tgo,self._tng):8.3f} |',
                 f'{self._nodes[t][1]:3.0f}  |',
                 f'{self._nodes[t][0][0]:8.2f} |',
                 f'{self._nodes[t][0][1] / (self._tng-self._tgo):8.0f} |',
